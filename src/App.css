@@ -1,0 +1,1790 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Calendar as CalendarIcon, 
+  Clock, 
+  MapPin, 
+  User, 
+  Plus, 
+  Settings, 
+  RotateCcw, 
+  Check, 
+  Edit2, 
+  Trash2, 
+  ChevronLeft, 
+  ChevronRight, 
+  Briefcase, 
+  Home, 
+  Coffee,
+  AlertCircle,
+  Download,
+  Users,
+  CalendarDays,
+  Map,
+  X,
+  Layers,
+  Sliders,
+  Mail,
+  Palette
+} from 'lucide-react';
+
+// Utilitário híbrido de persistência à prova de restrições de iframe/sandbox de página inteira
+const safeStorage = (() => {
+  let inMemoryFallback = {};
+  let isSupported = false;
+  try {
+    const testKey = '__storage_test__';
+    window.localStorage.setItem(testKey, testKey);
+    window.localStorage.removeItem(testKey);
+    isSupported = true;
+  } catch (e) {
+    isSupported = false;
+  }
+
+  return {
+    getItem: (key) => {
+      if (isSupported) {
+        try {
+          return window.localStorage.getItem(key);
+        } catch (e) {
+          return inMemoryFallback[key] || null;
+        }
+      }
+      return inMemoryFallback[key] || null;
+    },
+    setItem: (key, value) => {
+      if (isSupported) {
+        try {
+          window.localStorage.setItem(key, value);
+          return;
+        } catch (e) {}
+      }
+      inMemoryFallback[key] = String(value);
+    }
+  };
+})();
+
+const INITIAL_COLLABORATORS = [
+  {
+    id: 'colab-1',
+    name: 'Ana Silva',
+    role: 'Gestora de Conta',
+    email: 'ana.silva@empresa.pt',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    defaultSchedule: {
+      1: { active: true, start: '09:00', end: '18:00', location: 'Sede' },
+      2: { active: true, start: '09:00', end: '18:00', location: 'Sede' },
+      3: { active: true, start: '09:00', end: '18:00', location: 'Teletrabalho' },
+      4: { active: true, start: '09:00', end: '18:00', location: 'Sede' },
+      5: { active: true, start: '09:00', end: '17:00', location: 'Teletrabalho' },
+      6: { active: false, start: '09:00', end: '13:00', location: 'Sede' },
+      7: { active: false, start: '09:00', end: '13:00', location: 'Sede' }
+    }
+  },
+  {
+    id: 'colab-2',
+    name: 'Rui Santos',
+    role: 'Suporte Técnico',
+    email: 'rui.santos@empresa.pt',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+    defaultSchedule: {
+      1: { active: true, start: '08:00', end: '17:00', location: 'Sede' },
+      2: { active: true, start: '08:00', end: '17:00', location: 'Sede' },
+      3: { active: true, start: '08:00', end: '17:00', location: 'Sede' },
+      4: { active: true, start: '08:00', end: '17:00', location: 'Filial Porto' },
+      5: { active: true, start: '08:00', end: '17:00', location: 'Filial Porto' },
+      6: { active: false, start: '09:00', end: '13:00', location: 'Sede' },
+      7: { active: false, start: '09:00', end: '13:00', location: 'Sede' }
+    }
+  },
+  {
+    id: 'colab-3',
+    name: 'Beatriz Costa',
+    role: 'Designer UX/UI',
+    email: 'beatriz.costa@empresa.pt',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    defaultSchedule: {
+      1: { active: true, start: '10:00', end: '19:00', location: 'Teletrabalho' },
+      2: { active: true, start: '10:00', end: '19:00', location: 'Teletrabalho' },
+      3: { active: true, start: '10:00', end: '19:00', location: 'Sede' },
+      4: { active: true, start: '10:00', end: '19:00', location: 'Teletrabalho' },
+      5: { active: true, start: '10:00', end: '19:00', location: 'Sede' },
+      6: { active: false, start: '09:00', end: '13:00', location: 'Sede' },
+      7: { active: false, start: '09:00', end: '13:00', location: 'Sede' }
+    }
+  }
+];
+
+const INITIAL_LOCATIONS = [
+  { id: 'loc-1', name: 'Sede', color: 'blue' },
+  { id: 'loc-2', name: 'Teletrabalho', color: 'purple' },
+  { id: 'loc-3', name: 'Filial Porto', color: 'amber' },
+  { id: 'loc-4', name: 'Filial Lisboa', color: 'emerald' },
+  { id: 'loc-5', name: 'Cliente', color: 'slate' }
+];
+
+const getLocDotClass = (color) => {
+  switch (color) {
+    case 'blue': return 'bg-blue-500 ring-blue-400';
+    case 'purple': return 'bg-purple-500 ring-purple-400';
+    case 'amber': return 'bg-amber-500 ring-amber-400';
+    case 'emerald': return 'bg-emerald-500 ring-emerald-400';
+    case 'rose': return 'bg-rose-500 ring-rose-400';
+    case 'indigo': return 'bg-indigo-500 ring-indigo-400';
+    default: return 'bg-slate-500 ring-slate-400';
+  }
+};
+
+const getLocBadgeClass = (color) => {
+  switch (color) {
+    case 'blue': return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'purple': return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'amber': return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'emerald': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'rose': return 'bg-rose-50 text-rose-700 border-rose-200';
+    case 'indigo': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    default: return 'bg-slate-50 text-slate-700 border-slate-200';
+  }
+};
+
+const formatDateLabel = (date) => {
+  return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' });
+};
+
+export default function App() {
+  const [collaborators, setCollaborators] = useState(() => {
+    try {
+      const guardado = safeStorage.getItem('gestao_colaboradores');
+      return guardado ? JSON.parse(guardado) : INITIAL_COLLABORATORS;
+    } catch (e) {
+      return INITIAL_COLLABORATORS;
+    }
+  });
+
+  const [locations, setLocations] = useState(() => {
+    try {
+      const guardado = safeStorage.getItem('gestao_localizacoes');
+      return guardado ? JSON.parse(guardado) : INITIAL_LOCATIONS;
+    } catch (e) {
+      return INITIAL_LOCATIONS;
+    }
+  });
+  
+  const [activeColabId, setActiveColabId] = useState(() => {
+    return collaborators[0]?.id || '';
+  });
+  
+  // Modos de Vista: 'weekly' (Semanal), 'monthly' (Mensal de Equipa), 'admin' (Painel do Administrador)
+  const [viewMode, setViewMode] = useState('weekly');
+  const [adminActiveTab, setAdminActiveTab] = useState('colabs'); // 'colabs' ou 'locations'
+  
+  const [currentWeekOffset, setCurrentWeekOffset] = useState(0); 
+  const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
+  
+  const [exceptions, setExceptions] = useState(() => {
+    try {
+      const guardado = safeStorage.getItem('gestao_excecoes');
+      return guardado ? JSON.parse(guardado) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  // Modais e Controlos de Estado
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedDayToEdit, setSelectedDayToEdit] = useState(null); 
+  const [selectedColabToEdit, setSelectedColabToEdit] = useState(null);
+  
+  const [editForm, setEditForm] = useState({
+    active: true,
+    start: '09:00',
+    end: '18:00',
+    location: 'Sede',
+    isCustom: false
+  });
+
+  const [isConfigDefaultOpen, setIsConfigDefaultOpen] = useState(false);
+  const [tempDefaultSchedule, setTempDefaultSchedule] = useState(null);
+
+  // Modal Único de Adicionar/Editar Colaborador
+  const [isColabModalOpen, setIsColabModalOpen] = useState(false);
+  const [colabModalMode, setColabModalMode] = useState('add'); // 'add' ou 'edit'
+  const [selectedColabToForm, setSelectedColabToForm] = useState(null);
+  const [colabForm, setColabForm] = useState({ name: '', role: '', email: '', avatar: '' });
+
+  // Modal para confirmação de remoção de colaboradores
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [colabToDelete, setColabToDelete] = useState(null);
+
+  // Estados para Gestão de Localizações
+  const [newLocName, setNewLocName] = useState('');
+  const [newLocColor, setNewLocColor] = useState('blue');
+  const [editingLocId, setEditingLocId] = useState(null);
+  const [editingLocName, setEditingLocName] = useState('');
+  const [editingLocColor, setEditingLocColor] = useState('blue');
+
+  const [notification, setNotification] = useState(null);
+
+  useEffect(() => {
+    try {
+      safeStorage.setItem('gestao_colaboradores', JSON.stringify(collaborators));
+    } catch (e) {}
+  }, [collaborators]);
+
+  useEffect(() => {
+    try {
+      safeStorage.setItem('gestao_excecoes', JSON.stringify(exceptions));
+    } catch (e) {}
+  }, [exceptions]);
+
+  useEffect(() => {
+    try {
+      safeStorage.setItem('gestao_localizacoes', JSON.stringify(locations));
+    } catch (e) {}
+  }, [locations]);
+
+  const showToast = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const getWeekDates = (offset) => {
+    const dates = [];
+    const today = new Date();
+    const dayOfWeek = today.getDay(); 
+    const diffToMonday = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    
+    const monday = new Date(today.setDate(diffToMonday));
+    monday.setDate(monday.getDate() + offset * 7); 
+
+    for (let i = 0; i < 7; i++) {
+      const nextDay = new Date(monday);
+      nextDay.setDate(monday.getDate() + i);
+      dates.push(nextDay);
+    }
+    return dates;
+  };
+
+  const weekDates = getWeekDates(currentWeekOffset);
+  const activeColab = collaborators.find(c => c.id === activeColabId) || collaborators[0];
+  const dayNamesPt = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
+  const getExceptionKey = (colabId, date) => {
+    if (!colabId || !date) return '';
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${colabId}_${yyyy}-${mm}-${dd}`;
+  };
+
+  const getEffectiveScheduleForDay = (colab, date) => {
+    if (!colab || !date) return { active: false, start: '09:00', end: '18:00', location: 'Sede', isCustom: false };
+    const key = getExceptionKey(colab.id, date);
+    const hasException = exceptions[key];
+    
+    if (hasException) {
+      return { 
+        ...hasException, 
+        isCustom: true 
+      };
+    }
+
+    const jsDay = date.getDay();
+    const mappedDayIndex = jsDay === 0 ? 7 : jsDay;
+    const defaultDay = colab.defaultSchedule?.[mappedDayIndex] || { active: false, start: '09:00', end: '18:00', location: 'Sede' };
+
+    return {
+      ...defaultDay,
+      isCustom: false
+    };
+  };
+
+  const getLocStyles = (locName) => {
+    const loc = locations.find(l => l.name.toLowerCase() === locName.toLowerCase());
+    const color = loc ? loc.color : 'slate';
+    return {
+      dot: getLocDotClass(color),
+      badge: getLocBadgeClass(color)
+    };
+  };
+
+  const getDaysInMonthGrid = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    
+    const daysInMonth = lastDayOfMonth.getDate();
+    const startDayIndexRaw = firstDayOfMonth.getDay();
+    const startDayIndex = startDayIndexRaw === 0 ? 6 : startDayIndexRaw - 1;
+    
+    const gridDays = [];
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    
+    for (let i = startDayIndex - 1; i >= 0; i--) {
+      gridDays.push({
+        date: new Date(year, month - 1, prevMonthLastDay - i),
+        isCurrentMonth: false
+      });
+    }
+    
+    for (let i = 1; i <= daysInMonth; i++) {
+      gridDays.push({
+        date: new Date(year, month, i),
+        isCurrentMonth: true
+      });
+    }
+    
+    const remainingCells = 42 - gridDays.length;
+    for (let i = 1; i <= remainingCells; i++) {
+      gridDays.push({
+        date: new Date(year, month + 1, i),
+        isCurrentMonth: false
+      });
+    }
+    
+    return gridDays;
+  };
+
+  const monthGridDays = getDaysInMonthGrid(currentMonthDate);
+
+  const handleOpenEditDay = (date, colab = activeColab) => {
+    if (!colab || !date) return;
+    const sched = getEffectiveScheduleForDay(colab, date);
+    setSelectedDayToEdit({ date, dayIndex: date.getDay() === 0 ? 6 : date.getDay() - 1 });
+    setSelectedColabToEdit(colab);
+    setEditForm({
+      active: sched.active,
+      start: sched.start || '09:00',
+      end: sched.end || '18:00',
+      location: sched.location || (locations[0]?.name || 'Sede'),
+      isCustom: sched.isCustom
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveDayAdjustment = () => {
+    if (!selectedDayToEdit || !selectedColabToEdit) return;
+    const key = getExceptionKey(selectedColabToEdit.id, selectedDayToEdit.date);
+    
+    if (!editForm.isCustom) {
+      const updatedExceptions = { ...exceptions };
+      delete updatedExceptions[key];
+      setExceptions(updatedExceptions);
+      showToast(`Horário de ${selectedColabToEdit.name} reposto para o padrão.`);
+    } else {
+      setExceptions({
+        ...exceptions,
+        [key]: {
+          active: editForm.active,
+          start: editForm.start,
+          end: editForm.end,
+          location: editForm.location
+        }
+      });
+      showToast(`Ajuste individual guardado para ${selectedColabToEdit.name}.`);
+    }
+    setIsEditModalOpen(false);
+  };
+
+  const handleResetWeekToDefault = () => {
+    if (!activeColab) return;
+    const updatedExceptions = { ...exceptions };
+    let count = 0;
+    weekDates.forEach(date => {
+      const key = getExceptionKey(activeColab.id, date);
+      if (updatedExceptions[key]) {
+        delete updatedExceptions[key];
+        count++;
+      }
+    });
+    
+    if (count > 0) {
+      setExceptions(updatedExceptions);
+      showToast(`Reposto o horário base para ${count} dia(s) desta semana.`);
+    } else {
+      showToast("Toda a semana já segue o horário padrão.", "info");
+    }
+  };
+
+  const handleOpenConfigDefault = (colab = activeColab) => {
+    if (!colab) return;
+    setActiveColabId(colab.id);
+    setTempDefaultSchedule(JSON.parse(JSON.stringify(colab.defaultSchedule)));
+    setIsConfigDefaultOpen(true);
+  };
+
+  const handleSaveDefaultSchedule = () => {
+    const updatedCollaborators = collaborators.map(c => {
+      if (c.id === activeColabId) {
+        return { ...c, defaultSchedule: tempDefaultSchedule };
+      }
+      return c;
+    });
+    setCollaborators(updatedCollaborators);
+    setIsConfigDefaultOpen(false);
+    showToast("Estrutura horária padrão de contrato actualizada.");
+  };
+
+  const handleOpenColabModal = (mode, colab = null) => {
+    setColabModalMode(mode);
+    if (mode === 'edit' && colab) {
+      setSelectedColabToForm(colab);
+      setColabForm({
+        name: colab.name,
+        role: colab.role,
+        email: colab.email,
+        avatar: colab.avatar
+      });
+    } else {
+      setSelectedColabToForm(null);
+      setColabForm({ name: '', role: '', email: '', avatar: '' });
+    }
+    setIsColabModalOpen(true);
+  };
+
+  const handleSaveCollaboratorForm = (e) => {
+    e.preventDefault();
+    if (!colabForm.name || !colabForm.email) {
+      showToast("Preencha obrigatoriamente o nome e o email do colaborador.", "error");
+      return;
+    }
+
+    if (colabModalMode === 'add') {
+      const newId = `colab-${Date.now()}`;
+      const defaultSched = {
+        1: { active: true, start: '09:00', end: '18:00', location: locations[0]?.name || 'Sede' },
+        2: { active: true, start: '09:00', end: '18:00', location: locations[0]?.name || 'Sede' },
+        3: { active: true, start: '09:00', end: '18:00', location: locations[0]?.name || 'Sede' },
+        4: { active: true, start: '09:00', end: '18:00', location: locations[0]?.name || 'Sede' },
+        5: { active: true, start: '09:00', end: '18:00', location: locations[0]?.name || 'Sede' },
+        6: { active: false, start: '09:00', end: '13:00', location: locations[0]?.name || 'Sede' },
+        7: { active: false, start: '09:00', end: '13:00', location: locations[0]?.name || 'Sede' }
+      };
+
+      const imgRandomSeed = Math.floor(Math.random() * 100);
+      const defaultAvatar = `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80&sig=${imgRandomSeed}`;
+
+      const collaboratorToAdd = {
+        id: newId,
+        name: colabForm.name,
+        role: colabForm.role || 'Colaborador',
+        email: colabForm.email,
+        avatar: colabForm.avatar.trim() !== '' ? colabForm.avatar : defaultAvatar,
+        defaultSchedule: defaultSched
+      };
+
+      setCollaborators([...collaborators, collaboratorToAdd]);
+      setActiveColabId(newId);
+      showToast(`${colabForm.name} adicionado com sucesso!`);
+    } else if (colabModalMode === 'edit' && selectedColabToForm) {
+      const updatedCollaborators = collaborators.map(c => {
+        if (c.id === selectedColabToForm.id) {
+          return {
+            ...c,
+            name: colabForm.name,
+            role: colabForm.role || 'Colaborador',
+            email: colabForm.email,
+            avatar: colabForm.avatar.trim() !== '' ? colabForm.avatar : c.avatar
+          };
+        }
+        return c;
+      });
+      setCollaborators(updatedCollaborators);
+      showToast(`Dados de ${colabForm.name} atualizados.`);
+    }
+
+    setIsColabModalOpen(false);
+  };
+
+  const triggerDeleteRequest = (colab) => {
+    if (collaborators.length <= 1) {
+      showToast("Não é permitido apagar o último membro da equipa.", "error");
+      return;
+    }
+    setColabToDelete(colab);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!colabToDelete) return;
+    const { id, name } = colabToDelete;
+    
+    const filtrado = collaborators.filter(c => c.id !== id);
+    setCollaborators(filtrado);
+    
+    if (activeColabId === id) {
+      setActiveColabId(filtrado[0]?.id || '');
+    }
+    
+    const limpaExcecoes = { ...exceptions };
+    Object.keys(limpaExcecoes).forEach(key => {
+      if (key.startsWith(`${id}_`)) {
+        delete limpaExcecoes[key];
+      }
+    });
+    setExceptions(limpaExcecoes);
+    
+    setIsDeleteModalOpen(false);
+    setColabToDelete(null);
+    showToast(`Membro de equipa ${name} removido com sucesso.`);
+  };
+
+  const handleAddLocation = (e) => {
+    e.preventDefault();
+    if (!newLocName.trim()) {
+      showToast("Indique o nome da nova localização.", "error");
+      return;
+    }
+    
+    const isDuplicate = locations.some(l => l.name.toLowerCase() === newLocName.trim().toLowerCase());
+    if (isDuplicate) {
+      showToast("Já existe uma localização com esse nome.", "error");
+      return;
+    }
+
+    const newLoc = {
+      id: `loc-${Date.now()}`,
+      name: newLocName.trim(),
+      color: newLocColor
+    };
+
+    setLocations([...locations, newLoc]);
+    setNewLocName('');
+    showToast(`Localização "${newLoc.name}" criada.`);
+  };
+
+  const handleStartEditLocation = (loc) => {
+    setEditingLocId(loc.id);
+    setEditingLocName(loc.name);
+    setEditingLocColor(loc.color);
+  };
+
+  const handleSaveEditLocation = (id) => {
+    if (!editingLocName.trim()) {
+      showToast("O nome da localização não pode estar em branco.", "error");
+      return;
+    }
+
+    const updated = locations.map(l => {
+      if (l.id === id) {
+        return { ...l, name: editingLocName.trim(), color: editingLocColor };
+      }
+      return l;
+    });
+
+    setLocations(updated);
+    setEditingLocId(null);
+    showToast("Localização actualizada.");
+  };
+
+  const handleDeleteLocation = (loc) => {
+    if (locations.length <= 1) {
+      showToast("Precisa de ter pelo menos uma localização configurada.", "error");
+      return;
+    }
+    
+    const filtrado = locations.filter(l => l.id !== loc.id);
+    setLocations(filtrado);
+    showToast(`Localização "${loc.name}" removida.`);
+  };
+
+  const getLocationAllocationCount = (locName) => {
+    let count = 0;
+    collaborators.forEach(colab => {
+      Object.values(colab.defaultSchedule).forEach(sched => {
+        if (sched.active && sched.location.toLowerCase() === locName.toLowerCase()) {
+          count++;
+        }
+      });
+    });
+    return count;
+  };
+
+  const getWeekRangeLabel = () => {
+    const start = weekDates[0];
+    const end = weekDates[6];
+    return `${start.getDate()} de ${start.toLocaleDateString('pt-PT', { month: 'short' })} a ${end.getDate()} de ${end.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}`;
+  };
+
+  const getMonthYearLabel = (date) => {
+    return date.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
+  };
+
+  const getWeeklyStats = () => {
+    let totalHours = 0;
+    let daysWorking = 0;
+    let locationsCount = {};
+
+    weekDates.forEach((date) => {
+      const sched = getEffectiveScheduleForDay(activeColab, date);
+      if (sched && sched.active) {
+        daysWorking++;
+        const [startH, startM] = sched.start.split(':').map(Number);
+        const [endH, endM] = sched.end.split(':').map(Number);
+        let diff = (endH + endM/60) - (startH + startM/60);
+        if (diff > 5) diff -= 1; 
+        totalHours += diff;
+        
+        locationsCount[sched.location] = (locationsCount[sched.location] || 0) + 1;
+      }
+    });
+
+    return {
+      totalHours: totalHours.toFixed(1),
+      daysWorking,
+      locations: locationsCount
+    };
+  };
+
+  const stats = getWeeklyStats();
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
+      
+      {/* Toast flutuante */}
+      {notification && (
+        <div className="fixed top-4 right-4 z-[9999] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm bg-emerald-50 border-emerald-200 text-emerald-800 transition-all animate-bounce">
+          <Check className="w-4 h-4 text-emerald-600" />
+          <span>{notification.message}</span>
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-6 py-4 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 text-white p-2.5 rounded-xl">
+              <CalendarDays className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                Portal de Escalas & Horários
+              </h1>
+              <p className="text-xs text-slate-500 font-medium">
+                Parametrização avançada de equipas, mapas mensais e central de localizações.
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
+            {/* Seletor de Modo de Vista Global */}
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setViewMode('weekly')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'weekly' 
+                    ? 'bg-white text-indigo-700 shadow-xs' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <CalendarIcon className="w-3.5 h-3.5" />
+                <span>Vista Semanal</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setViewMode('monthly')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'monthly' 
+                    ? 'bg-white text-indigo-700 shadow-xs' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Vista Mensal Global</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('admin')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'admin' 
+                    ? 'bg-indigo-600 text-white shadow-xs' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Painel Administrador</span>
+              </button>
+            </div>
+
+            {viewMode !== 'admin' && (
+              <button 
+                type="button"
+                onClick={() => handleOpenColabModal('add')}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Novo Colaborador</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Seccionalização por Vista */}
+      {viewMode !== 'admin' ? (
+        /* VISTA SEMANAL OU MENSAL */
+        <main className="max-w-7xl mx-auto px-6 py-8 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Painel Esquerdo - Equipa (3 Colunas) */}
+          <aside className="lg:col-span-3 flex flex-col gap-6">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <h2 className="font-bold text-slate-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-slate-400" />
+                <span>Membros Ativos ({collaborators.length})</span>
+              </h2>
+              <div className="space-y-2">
+                {collaborators.map((colab) => (
+                  <div 
+                    key={colab.id}
+                    onClick={() => {
+                      setActiveColabId(colab.id);
+                      setCurrentWeekOffset(0); 
+                    }}
+                    className={`group flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
+                      activeColabId === colab.id 
+                        ? 'bg-indigo-50/70 border-indigo-200 shadow-xs' 
+                        : 'bg-transparent border-transparent hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={colab.avatar} 
+                        alt={colab.name} 
+                        className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                      />
+                      <div className="text-left">
+                        <h4 className="font-semibold text-slate-900 text-xs">{colab.name}</h4>
+                        <p className="text-[10px] text-slate-500">{colab.role}</p>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerDeleteRequest(colab);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-100 rounded-lg text-rose-500 transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Legenda de Cores das Localizações */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <h3 className="font-bold text-slate-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Map className="w-4 h-4 text-slate-400" />
+                <span>Localizações ({locations.length})</span>
+              </h3>
+              <div className="space-y-2.5">
+                {locations.map((loc) => (
+                  <div key={loc.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full ${getLocStyles(loc.name).dot} ring-2 ring-white shadow-xs`}></span>
+                      <span className="text-xs font-semibold text-slate-600">{loc.name}</span>
+                    </div>
+                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-medium">
+                      {getLocationAllocationCount(loc.name)}d
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-sm">
+              <h3 className="font-bold text-xs mb-2 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-indigo-400" />
+                <span>Gestão Unificada</span>
+              </h3>
+              <p className="text-[11px] text-indigo-200 leading-relaxed">
+                Mude para o <strong>Painel Administrador</strong> no topo direito se precisar de adicionar novas localizações geográficas ou reconfigurar perfis de equipa.
+              </p>
+            </div>
+          </aside>
+
+          {/* Painel Direito - Calendário e Horários (9 Colunas) */}
+          <section className="lg:col-span-9 flex flex-col gap-6">
+            
+            {/* VISTA SEMANAL INDIVIDUAL */}
+            {viewMode === 'weekly' && (
+              <>
+                {/* Card do Perfil Selecionado */}
+                {activeColab && (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <img 
+                        src={activeColab.avatar} 
+                        alt={activeColab.name} 
+                        className="w-14 h-14 rounded-full object-cover border-2 border-indigo-100 p-0.5"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-lg font-bold text-slate-900">{activeColab.name}</h2>
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-semibold">
+                            {activeColab.role}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">{activeColab.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => handleOpenConfigDefault(activeColab)}
+                        className="flex items-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Configurar Base</span>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={handleResetWeekToDefault}
+                        className="flex items-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Repor Semana</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Navegador de Dates (Semanal) */}
+                <div className="flex items-center justify-between bg-slate-200/60 p-1.5 rounded-xl">
+                  <button 
+                    type="button"
+                    onClick={() => setCurrentWeekOffset(prev => prev - 1)}
+                    className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-700 shadow-sm cursor-pointer"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <div className="flex items-center gap-2 text-slate-800 font-bold text-xs sm:text-sm">
+                    <CalendarIcon className="w-4 h-4 text-indigo-600" />
+                    <span>{getWeekRangeLabel()}</span>
+                    {currentWeekOffset === 0 && (
+                      <span className="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase">
+                        Semana Corrente
+                      </span>
+                    )}
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setCurrentWeekOffset(prev => prev + 1)}
+                    className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-700 shadow-sm cursor-pointer"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Grelha de Calendário Interativo Semanal */}
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+                  {weekDates.map((date, index) => {
+                    const sched = getEffectiveScheduleForDay(activeColab, date);
+                    const isToday = new Date().toDateString() === date.toDateString();
+                    const isWeekend = index >= 5;
+
+                    return (
+                      <div 
+                        key={index}
+                        onClick={() => handleOpenEditDay(date, activeColab)}
+                        className={`group relative bg-white border rounded-2xl p-4 transition-all flex flex-col justify-between min-h-[160px] cursor-pointer ${
+                          isToday ? 'ring-2 ring-indigo-600 border-transparent shadow-xs' : 'border-slate-200 hover:border-indigo-200 hover:shadow-md'
+                        } ${!sched.active ? 'bg-slate-50/70 border-dashed' : ''}`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className={`text-[9px] font-bold uppercase tracking-wider ${isWeekend ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {dayNamesPt[index]}
+                            </p>
+                            <h3 className="text-base font-black text-slate-900">
+                              {formatDateLabel(date)}
+                            </h3>
+                          </div>
+                          {sched.isCustom && (
+                            <span className="text-[8px] bg-indigo-100 text-indigo-800 font-black px-1 py-0.5 rounded-md">
+                              Ajuste
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="my-3">
+                          {sched.active ? (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-600 font-semibold">
+                                <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                                <span>{sched.start} - {sched.end}</span>
+                              </div>
+                              <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-bold ${getLocStyles(sched.location).badge}`}>
+                                <MapPin className="w-2.5 h-2.5" />
+                                <span>{sched.location}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 italic">
+                              <Coffee className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Folga / Descanso</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-100 mt-2">
+                          <span className="text-[9px] text-slate-400 font-medium">
+                            {sched.isCustom ? 'Exceção' : 'Padrão'}
+                          </span>
+                          <span className="opacity-0 group-hover:opacity-100 text-indigo-600 text-[10px] font-bold">
+                            Editar
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Painel de Métricas da Semana */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <h3 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-indigo-600" />
+                    <span>Resumo de Alocação (Semanal)</span>
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-slate-50 p-4 rounded-xl flex flex-col justify-between">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Total Estimado</span>
+                      <span className="text-xl font-black text-slate-900 mt-1">{stats.totalHours} Horas</span>
+                      <span className="text-[9px] text-slate-400">Deduzido tempo de descanso</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-xl flex flex-col justify-between">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Dias Efetivos</span>
+                      <span className="text-xl font-black text-slate-900 mt-1">{stats.daysWorking} de 7 Dias</span>
+                      <span className="text-[9px] text-slate-400">Escala de turnos ativa</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-xl flex flex-col justify-between">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase">Localizações</span>
+                      <div className="space-y-0.5 mt-1">
+                        {Object.keys(stats.locations).length > 0 ? (
+                          Object.entries(stats.locations).map(([loc, count]) => (
+                            <div key={loc} className="flex justify-between text-[10px] font-semibold">
+                              <span className="text-slate-500">{loc}:</span>
+                              <span className="text-slate-800">{count}d</span>
+                            </div>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Sem escalas ativas</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* VISTA MENSAL GLOBAL DE EQUIPA */}
+            {viewMode === 'monthly' && (
+              <>
+                {/* Navegador do Mês */}
+                <div className="flex items-center justify-between bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5 text-indigo-600" />
+                    <h2 className="text-base font-black text-slate-900 capitalize">
+                      {getMonthYearLabel(currentMonthDate)}
+                    </h2>
+                  </div>
+                  
+                  <div className="flex items-center gap-1">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const prev = new Date(currentMonthDate);
+                        prev.setMonth(prev.getMonth() - 1);
+                        setCurrentMonthDate(prev);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 border border-slate-200 transition-all cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setCurrentMonthDate(new Date())}
+                      className="px-3 py-1.5 hover:bg-slate-100 rounded-lg text-[10px] font-bold text-slate-700 border border-slate-200 transition-all cursor-pointer"
+                    >
+                      Mês Atual
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const next = new Date(currentMonthDate);
+                        next.setMonth(next.getMonth() + 1);
+                        setCurrentMonthDate(next);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 border border-slate-200 transition-all cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Calendário Mensal */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm overflow-hidden">
+                  {/* Dias da semana cabeçalho */}
+                  <div className="grid grid-cols-7 gap-1 border-b border-slate-100 pb-2 mb-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div>Seg</div>
+                    <div>Ter</div>
+                    <div>Qua</div>
+                    <div>Qui</div>
+                    <div>Sex</div>
+                    <div className="text-slate-300">Sáb</div>
+                    <div className="text-slate-300">Dom</div>
+                  </div>
+
+                  {/* Grelha de Dias */}
+                  <div className="grid grid-cols-7 gap-1 bg-slate-100 p-0.5 rounded-lg">
+                    {monthGridDays.map((cell, idx) => {
+                      const isToday = new Date().toDateString() === cell.date.toDateString();
+                      const isWeekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+
+                      return (
+                        <div 
+                          key={idx}
+                          onClick={() => handleOpenEditDay(cell.date, activeColab)}
+                          className={`min-h-[110px] p-2 bg-white flex flex-col justify-between transition-all cursor-pointer hover:bg-slate-50/70 ${
+                            cell.isCurrentMonth ? 'text-slate-900' : 'text-slate-300 bg-slate-50/50'
+                          } ${isToday ? 'ring-2 ring-indigo-600 ring-inset' : ''}`}
+                        >
+                          {/* Data numérica do dia */}
+                          <div className="flex justify-between items-center">
+                            <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-md ${
+                              isToday ? 'bg-indigo-600 text-white' : ''
+                            } ${isWeekend && cell.isCurrentMonth ? 'text-slate-400' : ''}`}>
+                              {cell.date.getDate()}
+                            </span>
+                          </div>
+
+                          {/* Listagem de Colaboradores e seus status no dia */}
+                          <div className="flex flex-wrap gap-1 mt-1.5 overflow-y-auto max-h-[70px] scrollbar-thin">
+                            {collaborators.map((colab) => {
+                              const sched = getEffectiveScheduleForDay(colab, cell.date);
+                              if (!sched.active) return null; // Oculta caso seja folga
+
+                              return (
+                                <div 
+                                  key={colab.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Evita acionar o clique do bloco inteiro
+                                    handleOpenEditDay(cell.date, colab);
+                                  }}
+                                  className="group/avatar relative cursor-pointer"
+                                >
+                                  {/* Mini Avatar com borda colorida baseada na localização dinamicamente */}
+                                  <div className="relative">
+                                    <img 
+                                      src={colab.avatar} 
+                                      alt={colab.name} 
+                                      className="w-6 h-6 rounded-full object-cover ring-2 transition-transform hover:scale-110"
+                                      style={{
+                                        borderColor: locations.find(l => l.name.toLowerCase() === sched.location.toLowerCase())?.color === 'blue' ? '#3b82f6' :
+                                                     locations.find(l => l.name.toLowerCase() === sched.location.toLowerCase())?.color === 'purple' ? '#a855f7' :
+                                                     locations.find(l => l.name.toLowerCase() === sched.location.toLowerCase())?.color === 'amber' ? '#f59e0b' :
+                                                     locations.find(l => l.name.toLowerCase() === sched.location.toLowerCase())?.color === 'emerald' ? '#10b981' :
+                                                     locations.find(l => l.name.toLowerCase() === sched.location.toLowerCase())?.color === 'rose' ? '#f43f5e' :
+                                                     locations.find(l => l.name.toLowerCase() === sched.location.toLowerCase())?.color === 'indigo' ? '#6366f1' : '#64748b'
+                                      }}
+                                    />
+                                    {sched.isCustom && (
+                                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-indigo-600 border border-white rounded-full"></span>
+                                    )}
+                                  </div>
+
+                                  {/* Tooltip */}
+                                  <div className="pointer-events-none opacity-0 group-hover/avatar:opacity-100 absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 bg-slate-950 text-white text-[9px] p-2 rounded-lg shadow-xl transition-all duration-150">
+                                    <p className="font-bold">{colab.name}</p>
+                                    <p className="text-slate-300 mt-0.5">{sched.start} - {sched.end}</p>
+                                    <p className="text-indigo-300 font-bold">{sched.location}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+          </section>
+        </main>
+      ) : (
+        /* VISTA ADMINISTRAÇÃO TOTAL (COLABORADORES, LOCALIZAÇÕES E HORÁRIOS) */
+        <main className="max-w-7xl mx-auto px-6 py-8 flex-1 w-full flex flex-col gap-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-indigo-600" />
+                  <span>Painel de Controlo Administrativo</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Área exclusiva para parametrização corporativa de recursos, planos base de horários e localizações.
+                </p>
+              </div>
+
+              {/* Sub-tabs Admin */}
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 self-stretch md:self-auto">
+                <button
+                  onClick={() => setAdminActiveTab('colabs')}
+                  className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    adminActiveTab === 'colabs'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Gerir Colaboradores ({collaborators.length})</span>
+                </button>
+                <button
+                  onClick={() => setAdminActiveTab('locations')}
+                  className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    adminActiveTab === 'locations'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Map className="w-4 h-4" />
+                  <span>Gerir Localizações ({locations.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: GERIR COLABORADORES */}
+            {adminActiveTab === 'colabs' && (
+              <div className="mt-6 space-y-6">
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider">Fichas de Cadastro de Equipa</h3>
+                  <button
+                    onClick={() => handleOpenColabModal('add')}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Adicionar Colaborador</span>
+                  </button>
+                </div>
+
+                {/* Tabela de Colaboradores */}
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-wider font-bold">
+                        <th className="p-4">Colaborador</th>
+                        <th className="p-4">Cargo / Função</th>
+                        <th className="p-4">Email</th>
+                        <th className="p-4 text-center">Horário de Contrato</th>
+                        <th className="p-4 text-right">Ações de Gestão</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {collaborators.map((colab) => (
+                        <tr key={colab.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 flex items-center gap-3">
+                            <img src={colab.avatar} alt={colab.name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                            <span className="font-bold text-slate-950 text-sm">{colab.name}</span>
+                          </td>
+                          <td className="p-4 font-semibold text-slate-600 text-sm">{colab.role}</td>
+                          <td className="p-4 text-slate-500 font-medium">{colab.email}</td>
+                          <td className="p-4 text-center">
+                            <button
+                              onClick={() => handleOpenConfigDefault(colab)}
+                              className="inline-flex items-center gap-1.5 border border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50 text-indigo-700 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                              <span>Parametrizar Horário Base</span>
+                            </button>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                onClick={() => handleOpenColabModal('edit', colab)}
+                                className="p-2 hover:bg-indigo-50 rounded-lg text-indigo-600 transition-all cursor-pointer"
+                                title="Editar Cadastro"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => triggerDeleteRequest(colab)}
+                                className="p-2 hover:bg-rose-50 rounded-lg text-rose-600 transition-all cursor-pointer"
+                                title="Eliminar Colaborador"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: GERIR LOCALIZAÇÕES */}
+            {adminActiveTab === 'locations' && (
+              <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                
+                {/* Esquerda: Lista e Ações */}
+                <div className="lg:col-span-8 space-y-4">
+                  <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider">Localizações Ativas</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {locations.map((loc) => {
+                      const isEditing = editingLocId === loc.id;
+                      const allocationCount = getLocationAllocationCount(loc.name);
+
+                      return (
+                        <div 
+                          key={loc.id} 
+                          className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-col justify-between gap-3 hover:border-indigo-100 hover:shadow-xs transition-all"
+                        >
+                          {isEditing ? (
+                            <div className="space-y-3 w-full">
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Nome</label>
+                                <input 
+                                  type="text"
+                                  value={editingLocName}
+                                  onChange={(e) => setEditingLocName(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Selecione uma Cor</label>
+                                <div className="flex gap-2 flex-wrap mt-1">
+                                  {['blue', 'purple', 'amber', 'emerald', 'rose', 'indigo', 'slate'].map(color => (
+                                    <button
+                                      key={color}
+                                      type="button"
+                                      onClick={() => setEditingLocColor(color)}
+                                      className={`w-6 h-6 rounded-full border-2 transition-all ${getLocDotClass(color)} ${
+                                        editingLocColor === color ? 'border-indigo-600 scale-110 shadow-sm' : 'border-transparent'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingLocId(null)}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-slate-850"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditLocation(loc.id)}
+                                  className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900"
+                                >
+                                  Guardar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-3.5 h-3.5 rounded-full ${getLocStyles(loc.name).dot} ring-2 ring-white shadow-xs`}></span>
+                                  <span className="font-bold text-slate-950 text-sm">{loc.name}</span>
+                                </div>
+                                
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleStartEditLocation(loc)}
+                                    className="p-1 hover:bg-slate-200 rounded text-slate-500 cursor-pointer"
+                                    title="Editar Localização"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteLocation(loc)}
+                                    className="p-1 hover:bg-rose-50 rounded text-rose-500 cursor-pointer"
+                                    title="Remover"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2 border-t border-slate-100 pt-2">
+                                <span>Contrato Base Associado:</span>
+                                <span className="font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                                  {allocationCount} dias de alocação
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Direita: Formulário de Nova Localização */}
+                <div className="lg:col-span-4">
+                  <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50/50 space-y-4">
+                    <h3 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Palette className="w-4 h-4 text-indigo-600" />
+                      <span>Nova Localização</span>
+                    </h3>
+
+                    <form onSubmit={handleAddLocation} className="space-y-4">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1.5">Nome Geográfico / Sítio</label>
+                        <input
+                          type="text"
+                          required
+                          value={newLocName}
+                          onChange={(e) => setNewLocName(e.target.value)}
+                          placeholder="Ex: Filial Coimbra"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none font-semibold text-slate-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1.5">Cor Temática no Mapa</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {['blue', 'purple', 'amber', 'emerald', 'rose', 'indigo', 'slate'].map(color => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => setNewLocColor(color)}
+                              className={`w-7 h-7 rounded-full border-2 transition-all ${getLocDotClass(color)} ${
+                                newLocColor === color ? 'border-indigo-600 scale-110 shadow-sm' : 'border-transparent'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2.5 text-xs font-bold transition-all shadow-xs cursor-pointer mt-2"
+                      >
+                        Adicionar Localização
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+          </div>
+        </main>
+      )}
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 py-4 px-6 text-center text-[10px] text-slate-400 mt-12">
+        Plataforma Autónoma de Controlo de Escalas • Todos os direitos reservados.
+      </footer>
+
+      {/* MODAL 1: Ajustar Dia (Exceção) */}
+      {isEditModalOpen && selectedDayToEdit && selectedColabToEdit && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-slate-100 overflow-hidden">
+            
+            <div className="bg-indigo-900 text-white p-5">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <img src={selectedColabToEdit.avatar} className="w-8 h-8 rounded-full object-cover" />
+                  <div>
+                    <h3 className="text-xs text-indigo-200">Ajustar Escala de</h3>
+                    <p className="text-sm font-black">{selectedColabToEdit.name}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="text-white hover:text-indigo-200 p-1 cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-[10px] text-indigo-300 mt-2">
+                {dayNamesPt[selectedDayToEdit.dayIndex]}, {selectedDayToEdit.date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              
+              <div className="bg-slate-100 p-1 rounded-xl flex">
+                <button 
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, isCustom: false })}
+                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                    !editForm.isCustom 
+                      ? 'bg-white text-indigo-700 shadow-xs' 
+                      : 'text-slate-500'
+                  }`}
+                >
+                  Contrato Base
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, isCustom: true })}
+                  className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                    editForm.isCustom 
+                      ? 'bg-white text-indigo-700 shadow-xs' 
+                      : 'text-slate-500'
+                  }`}
+                >
+                  Exceção Pontual
+                </button>
+              </div>
+
+              <div className={`space-y-4 ${editForm.isCustom ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800">Dia de Trabalho?</label>
+                    <p className="text-[9px] text-slate-400">Ative para atribuir horário de serviço</p>
+                  </div>
+                  <input 
+                    type="checkbox"
+                    disabled={!editForm.isCustom}
+                    checked={editForm.active}
+                    onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                  />
+                </div>
+
+                {editForm.active && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Entrada</label>
+                        <input 
+                          type="time"
+                          disabled={!editForm.isCustom}
+                          value={editForm.start}
+                          onChange={(e) => setEditForm({ ...editForm, start: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Saída</label>
+                        <input 
+                          type="time"
+                          disabled={!editForm.isCustom}
+                          value={editForm.end}
+                          onChange={(e) => setEditForm({ ...editForm, end: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Localização</label>
+                      <select
+                        disabled={!editForm.isCustom}
+                        value={editForm.location}
+                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        {locations.map(loc => (
+                          <option key={loc.id} value={loc.name}>{loc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {!editForm.isCustom && (
+                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-indigo-800 leading-normal">
+                    Este dia está a herdar o horário do perfil base de forma direta.
+                  </p>
+                </div>
+              )}
+
+            </div>
+
+            <div className="bg-slate-50 px-5 py-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button 
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-850 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={handleSaveDayAdjustment}
+                className="px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-md cursor-pointer"
+              >
+                Aplicar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Definir Horário Base / Contrato */}
+      {isConfigDefaultOpen && tempDefaultSchedule && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl border border-slate-100 overflow-hidden">
+            
+            <div className="bg-indigo-950 text-white p-5 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-bold">Definições Globais do Perfil</h3>
+                <p className="text-[10px] text-indigo-200 mt-0.5">
+                  Configure o horário recorrente padrão do colaborador ativo.
+                </p>
+              </div>
+              <button type="button" onClick={() => setIsConfigDefaultOpen(false)} className="text-white hover:text-indigo-200 p-1 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 max-h-[50vh] overflow-y-auto space-y-3">
+              {dayNamesPt.map((dayName, idx) => {
+                const dayNum = idx + 1;
+                const dayConfig = tempDefaultSchedule[dayNum];
+
+                return (
+                  <div key={dayNum} className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center pb-2.5 border-b border-slate-100 last:border-0">
+                    <div className="md:col-span-3 flex items-center gap-2">
+                      <input 
+                        type="checkbox"
+                        checked={dayConfig.active}
+                        onChange={(e) => {
+                          const updated = { ...tempDefaultSchedule };
+                          updated[dayNum].active = e.target.checked;
+                          setTempDefaultSchedule(updated);
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                        id={`cfg-${dayNum}`}
+                      />
+                      <label htmlFor={`cfg-${dayNum}`} className="text-xs font-bold text-slate-800 cursor-pointer">
+                        {dayName}
+                      </label>
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <input 
+                        type="time"
+                        disabled={!dayConfig.active}
+                        value={dayConfig.start}
+                        onChange={(e) => {
+                          const updated = { ...tempDefaultSchedule };
+                          updated[dayNum].start = e.target.value;
+                          setTempDefaultSchedule(updated);
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <input 
+                        type="time"
+                        disabled={!dayConfig.active}
+                        value={dayConfig.end}
+                        onChange={(e) => {
+                          const updated = { ...tempDefaultSchedule };
+                          updated[dayNum].end = e.target.value;
+                          setTempDefaultSchedule(updated);
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <select
+                        disabled={!dayConfig.active}
+                        value={dayConfig.location}
+                        onChange={(e) => {
+                          const updated = { ...tempDefaultSchedule };
+                          updated[dayNum].location = e.target.value;
+                          setTempDefaultSchedule(updated);
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                      >
+                        {locations.map(loc => (
+                          <option key={loc.id} value={loc.name}>{loc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-slate-50 px-5 py-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button 
+                type="button"
+                onClick={() => setIsConfigDefaultOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-850 cursor-pointer"
+              >
+                Voltar
+              </button>
+              <button 
+                type="button"
+                onClick={handleSaveDefaultSchedule}
+                className="px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-md cursor-pointer"
+              >
+                Guardar Plano Padrão
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Registar ou Editar Colaborador */}
+      {isColabModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleSaveCollaboratorForm}
+            className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden"
+          >
+            <div className="bg-indigo-950 text-white p-5 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-bold">
+                  {colabModalMode === 'add' ? 'Ficha de Admissão' : 'Ficha de Edição de Perfil'}
+                </h3>
+                <p className="text-[10px] text-indigo-200 mt-0.5">
+                  {colabModalMode === 'add' 
+                    ? 'Registe o novo colaborador e gere o perfil de horários base.' 
+                    : 'Atualize os dados e credenciais básicas del colaborador.'}
+                </p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsColabModalOpen(false)} 
+                className="text-white hover:text-indigo-200 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3.5">
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Nome Completo</label>
+                <input 
+                  type="text"
+                  required
+                  value={colabForm.name}
+                  onChange={(e) => setColabForm({ ...colabForm, name: e.target.value })}
+                  placeholder="Ex: João Ferreira"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Cargo</label>
+                <input 
+                  type="text"
+                  value={colabForm.role}
+                  onChange={(e) => setColabForm({ ...colabForm, role: e.target.value })}
+                  placeholder="Ex: Consultor Técnico"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Email</label>
+                <input 
+                  type="email"
+                  required
+                  value={colabForm.email}
+                  onChange={(e) => setColabForm({ ...colabForm, email: e.target.value })}
+                  placeholder="Ex: joao.ferreira@empresa.pt"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">URL da Imagem (Avatar)</label>
+                <input 
+                  type="url"
+                  value={colabForm.avatar}
+                  onChange={(e) => setColabForm({ ...colabForm, avatar: e.target.value })}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-5 py-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button 
+                type="button"
+                onClick={() => setIsColabModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-850 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                className="px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-md cursor-pointer"
+              >
+                {colabModalMode === 'add' ? 'Confirmar Registo' : 'Guardar Alterações'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL 4: Confirmação de Remoção de Colaborador */}
+      {isDeleteModalOpen && colabToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="bg-rose-900 text-white p-5 flex items-center gap-3">
+              <AlertCircle className="w-6 h-6 text-rose-200 shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold">Confirmar Remoção</h3>
+                <p className="text-[10px] text-rose-200 mt-0.5">Esta ação não pode ser revertida.</p>
+              </div>
+            </div>
+            
+            <div className="p-5 space-y-2">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Tem a certeza de que deseja remover permanentemente o colaborador <strong>{colabToDelete.name}</strong> da plataforma de escalas?
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Todos os agendamentos personalizados e exceções deste membro de equipa serão eliminados imediatamente.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 px-5 py-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setColabToDelete(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-850 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-3.5 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer"
+              >
+                Remover Membro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
