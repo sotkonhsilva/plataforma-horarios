@@ -44,6 +44,7 @@ const formatDateLabel = (date: Date) => {
 };
 
 export default function App() {
+  // Configuração explícita de tipos com <any[]> para evitar o erro de 'never' na Vercel
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [locations] = useState<any[]>(INITIAL_LOCATIONS);
   const [escalas, setEscalas] = useState<any[]>([]);
@@ -207,6 +208,14 @@ export default function App() {
     setEditForm({ active: sched.active, start: sched.start, end: sched.end, location: sched.location });
     setIsEditModalOpen(true);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-xs font-bold text-slate-400 animate-pulse">A carregar dados corporativos...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col">
