@@ -636,7 +636,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-black text-white tracking-tight">Horários e Localizações</h1>
-              <p className="text-xs text-slate-400 font-medium">Parametrização em tempo real ligada à base de dados Supabase.</p>
+              <p className="text-xs text-slate-400 font-medium">Parametrização em tempo real.</p>
             </div>
           </div>
           
