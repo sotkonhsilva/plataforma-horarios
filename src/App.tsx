@@ -481,6 +481,18 @@ export default function App() {
     }
   };
 
+  const handleDeleteCollaborator = async (id) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar este colaborador? (Todos os seus horários serão apagados)')) return;
+    try {
+      const { error } = await supabase.from('colaboradores').delete().eq('id', id);
+      if (error) throw error;
+      showNotification('Colaborador eliminado com sucesso!');
+      fetchData();
+    } catch (err) {
+      showNotification('Erro: ' + err.message, 'error');
+    }
+  };
+
   const renderMonthlyGrid = () => {
     const year = currentMonthDate.getFullYear();
     const month = currentMonthDate.getMonth();
@@ -761,7 +773,8 @@ export default function App() {
                         </td>
                         <td className="p-4 text-slate-400">{colab.email}</td>
                         <td className="p-4 text-right">
-                          <button onClick={() => handleOpenColabModal('edit', colab)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleOpenColabModal('edit', colab)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDeleteCollaborator(colab.id)} className="p-2 text-red-400 hover:text-red-300 transition-colors ml-1" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
                         </td>
                       </tr>
                     ))}
