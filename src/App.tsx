@@ -282,11 +282,26 @@ export default function App() {
     setCurrentMonthDate(d);
   };
 
-  const handleOpenEditDay = (dateStr) => {
+  const handleOpenEditDay = (dateStr, colabId = null) => {
     if (!isAdmin) return; 
     setSelectedDayToEdit(dateStr);
-    setSelectedColabToEditId('');
-    setEditForm([]);
+    
+    if (colabId) {
+      setSelectedColabToEditId(colabId);
+      const colab = collaborators.find(c => c.id === colabId);
+      if (colab) {
+        const shifts = getEffectiveScheduleForDay(colab, dateStr);
+        if (shifts.length === 0) {
+          setEditForm([{ start_time: '09:00', end_time: '13:00', location: locations[0]?.name || '' }]);
+        } else {
+          setEditForm(shifts.map(s => ({ start_time: s.start_time, end_time: s.end_time, location: s.location })));
+        }
+      }
+    } else {
+      setSelectedColabToEditId('');
+      setEditForm([]);
+    }
+    
     setIsEditModalOpen(true);
   };
 
@@ -539,8 +554,8 @@ export default function App() {
                const shifts = getEffectiveScheduleForDay(colab, dateStr);
                const hasOverride = shifts.some(s => s.isOverride);
                return (
-                 <div key={colab.id} className="relative group/tooltip">
-                   <div className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border shadow-sm transition-all ${getColorForName(colab.name)} ${hasOverride ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-white' : ''}`}>
+                 <div key={colab.id} className="relative group/tooltip" onClick={(e) => { e.stopPropagation(); isAdmin && handleOpenEditDay(dateStr, colab.id); }}>
+                   <div className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border shadow-sm transition-all ${getColorForName(colab.name)} ${hasOverride ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-white' : ''} ${isAdmin ? 'hover:scale-110 cursor-pointer' : ''}`}>
                      {getInitials(colab.name)}
                    </div>
                    {/* Tooltip */}
