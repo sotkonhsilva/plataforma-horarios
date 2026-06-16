@@ -1,17 +1,39 @@
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
 
-const supabaseUrl = 'https://nnoqjxfuoobcoyqjkidj.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ub3FqeGZ1b29iY295cWpraWRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNzIxNjMsImV4cCI6MjA5Njg0ODE2M30.Il8HHAhnW7I_kaAcScEfmmOhv57B2fV5K1ZfdiWTVQk';
+const envFile = fs.readFileSync('.env', 'utf8');
+const env = {};
+envFile.split('\n').forEach(line => {
+  const [key, ...val] = line.split('=');
+  if (key && val) env[key.trim()] = val.join('=').trim();
+});
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
 
-async function run() {
-  const { data, error } = await supabase.from('colaboradores').insert([{
-    name: 'Test',
-    role: 'Colaborador',
-    email: 'test@test.com'
-  }]).select();
-  console.log("Error:", error);
-  console.log("Data:", data);
+async function test() {
+  const { data: colabs } = await supabase.from('colaboradores').select('id').limit(1);
+  if (!colabs || colabs.length === 0) return console.log('No colabs');
+  const colabId = colabs[0].id;
+  
+  const payload = {
+    collaborator_id: colabId,
+    date: '2026-06-03',
+    start_time: '14:00',
+    end_time: '20:00',
+    location: 'Pólo 1'
+  };
+  
+  const { error } = await supabase.from('escalas').insert([payload]);
+  console.log('Error insert 1:', error?.message);
+
+  const payload2 = {
+    colaborador_id: colabId,
+    data: '2026-06-03',
+    hora_entrada: '14:00',
+    hora_saida: '20:00',
+    localizacao: 'Pólo 1'
+  };
+  const { error: error2 } = await supabase.from('escalas').insert([payload2]);
+  console.log('Error insert 2:', error2?.message);
 }
-run();
+test();

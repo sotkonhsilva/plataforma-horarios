@@ -241,11 +241,11 @@ export default function App() {
     if (!colab) return [];
     
     // Escalas Manuais (Overrides) aplicam-se SEMPRE que existam, independentemente de ser fds ou feriado
-    const overrideShifts = schedules.filter(s => s.collaborator_id === colab.id && s.date === dateStr);
+    const overrideShifts = schedules.filter(s => s.colaborador_id === colab.id && s.data === dateStr);
     if (overrideShifts.length > 0) {
       return overrideShifts
-        .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
-        .map(s => ({ ...s, isOverride: true }));
+        .sort((a, b) => (a.hora_entrada || '').localeCompare(b.hora_entrada || ''))
+        .map(s => ({ ...s, isOverride: true, start_time: s.hora_entrada, end_time: s.hora_saida, location: s.localizacao }));
     }
     
     // Se não há escalas manuais, verificamos se o dia permite usar os turnos padrão
@@ -323,16 +323,16 @@ export default function App() {
     if (!selectedColabToEditId) return;
     try {
       await supabase.from('escalas').delete()
-        .eq('collaborator_id', selectedColabToEditId)
-        .eq('date', selectedDayToEdit);
+        .eq('colaborador_id', selectedColabToEditId)
+        .eq('data', selectedDayToEdit);
       
       if (editForm.length > 0) {
         const payload = editForm.map(shift => ({
-          collaborator_id: selectedColabToEditId,
-          date: selectedDayToEdit,
-          start_time: shift.start_time || null,
-          end_time: shift.end_time || null,
-          location: shift.location
+          colaborador_id: selectedColabToEditId,
+          data: selectedDayToEdit,
+          hora_entrada: shift.start_time || null,
+          hora_saida: shift.end_time || null,
+          localizacao: shift.location
         }));
         const { error } = await supabase.from('escalas').insert(payload);
         if (error) throw error;
@@ -351,8 +351,8 @@ export default function App() {
      if (!selectedColabToEditId) return;
      try {
        await supabase.from('escalas').delete()
-        .eq('collaborator_id', selectedColabToEditId)
-        .eq('date', selectedDayToEdit);
+        .eq('colaborador_id', selectedColabToEditId)
+        .eq('data', selectedDayToEdit);
        
        await fetchData();
        setIsEditModalOpen(false);
@@ -630,7 +630,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 font-sans flex flex-col selection:bg-indigo-500/30">
       {notification && (
-        <div className={`fixed top-4 right-4 z-[9999] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm transition-all ${
+        <div className={`fixed top-4 right-4 z-[99999] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm transition-all ${
           notification.type === 'error' 
             ? 'bg-red-50 text-red-700 border-red-200' 
             : 'bg-emerald-50 text-emerald-700 border-emerald-200'
