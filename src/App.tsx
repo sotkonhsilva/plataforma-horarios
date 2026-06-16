@@ -38,6 +38,8 @@ const PREDEFINED_SCHEDULES = {
   'H3': { label: '3º - das 13h00 às 20h00', shifts: [{ start_time: '13:00', end_time: '20:00', location: '' }] },
   'H4': { label: '4º - das 13h00 às 21h00', shifts: [{ start_time: '13:00', end_time: '21:00', location: '' }] },
   'TELETRABALHO': { label: '5º - Teletrabalho', shifts: [{ start_time: '', end_time: '', location: 'Teletrabalho' }] },
+  'FERIAS': { label: '6º - Férias', shifts: [{ start_time: '', end_time: '', location: 'Férias' }] },
+  'FALTA': { label: '7º - Falta', shifts: [{ start_time: '', end_time: '', location: 'Falta' }] },
   'CUSTOM': { label: 'Personalizado', shifts: [] }
 };
 
