@@ -402,11 +402,11 @@ export default function App() {
       if (editScheduleType === 'CUSTOM') {
          finalShifts = editForm;
       } else if (editScheduleType === 'TELETRABALHO') {
-         finalShifts = [{ start_time: null, end_time: null, location: 'Teletrabalho' }];
+         finalShifts = [{ start_time: '', end_time: '', location: 'Teletrabalho' }];
       } else if (editScheduleType === 'FERIAS') {
-         finalShifts = [{ start_time: null, end_time: null, location: 'Férias' }];
+         finalShifts = [{ start_time: '', end_time: '', location: 'Férias' }];
       } else if (editScheduleType === 'FALTA') {
-         finalShifts = [{ start_time: null, end_time: null, location: 'Falta' }];
+         finalShifts = [{ start_time: '', end_time: '', location: 'Falta' }];
       } else if (PREDEFINED_SCHEDULES[editScheduleType]) {
          finalShifts = [{
             ...PREDEFINED_SCHEDULES[editScheduleType].shifts[0],
@@ -421,8 +421,8 @@ export default function App() {
               payload.push({
                 colaborador_id: selectedColabToEditId,
                 data: dStr,
-                hora_entrada: shift.start_time || null,
-                hora_saida: shift.end_time || null,
+                hora_entrada: shift.start_time || '00:00',
+                hora_saida: shift.end_time || '23:59',
                 localizacao: shift.location
               });
            });
@@ -525,7 +525,7 @@ export default function App() {
       if (colabForm.schedule_type === 'CUSTOM') {
          finalShifts = colabForm.default_shifts;
       } else if (colabForm.schedule_type === 'TELETRABALHO') {
-         finalShifts = [{ start_time: null, end_time: null, location: 'Teletrabalho' }];
+         finalShifts = [{ start_time: '', end_time: '', location: 'Teletrabalho' }];
       } else if (PREDEFINED_SCHEDULES[colabForm.schedule_type]) {
          finalShifts = [{
             ...PREDEFINED_SCHEDULES[colabForm.schedule_type].shifts[0],
