@@ -32,6 +32,15 @@ const getColorForName = (name) => {
   return avatarColors[Math.abs(hash) % avatarColors.length];
 };
 
+const PREDEFINED_SCHEDULES = {
+  'H1': { label: '1º - das 08h00 às 17h00', shifts: [{ start_time: '08:00', end_time: '17:00', location: '' }] },
+  'H2': { label: '2º - das 09h00 às 18h00', shifts: [{ start_time: '09:00', end_time: '18:00', location: '' }] },
+  'H3': { label: '3º - das 13h00 às 20h00', shifts: [{ start_time: '13:00', end_time: '20:00', location: '' }] },
+  'H4': { label: '4º - das 13h00 às 21h00', shifts: [{ start_time: '13:00', end_time: '21:00', location: '' }] },
+  'TELETRABALHO': { label: '5º - Teletrabalho', shifts: [{ start_time: '', end_time: '', location: 'Teletrabalho' }] },
+  'CUSTOM': { label: 'Personalizado', shifts: [] }
+};
+
 const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
 const getFirstDayOfMonth = (year, month) => {
   let day = new Date(year, month, 1).getDay() - 1; // Ajuste para segunda-feira
@@ -112,6 +121,10 @@ export default function App() {
   const [selectedDayToEdit, setSelectedDayToEdit] = useState(null);
   const [selectedColabToEditId, setSelectedColabToEditId] = useState('');
   const [editForm, setEditForm] = useState([]);
+  const [editModeType, setEditModeType] = useState('single');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editScheduleType, setEditScheduleType] = useState('CUSTOM');
+  const [editDefaultLocation, setEditDefaultLocation] = useState('');
 
   const [isColabModalOpen, setIsColabModalOpen] = useState(false);
   const [colabModalMode, setColabModalMode] = useState('add');
@@ -121,10 +134,9 @@ export default function App() {
     role: 'Colaborador', 
     email: '', 
     initial_password: '',
-    default_shifts: [
-      { start_time: '09:00', end_time: '13:00', location: '' },
-      { start_time: '14:00', end_time: '20:00', location: '' }
-    ] 
+    schedule_type: 'H1',
+    default_location: '',
+    default_shifts: [] 
   });
 
   // Filtros da Vista Mensal
@@ -262,7 +274,7 @@ export default function App() {
     // Caso contrário (Dia Útil Normal), retorna a lista de turnos padrão
     if (colab.default_shifts && Array.isArray(colab.default_shifts)) {
        return colab.default_shifts
-         .filter(s => s.start_time || s.end_time) // ignora turnos vazios perdidos
+         .filter(s => s.start_time || s.end_time || ['Teletrabalho', 'Férias', 'Falta'].includes(s.location))
          .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
          .map(s => ({ ...s, isOverride: false }));
     }
@@ -285,6 +297,10 @@ export default function App() {
   const handleOpenEditDay = (dateStr, colabId = null) => {
     if (!isAdmin) return; 
     setSelectedDayToEdit(dateStr);
+    setEditModeType('single');
+    setEditEndDate(dateStr);
+    setEditScheduleType('CUSTOM');
+    setEditDefaultLocation('');
     
     if (colabId) {
       setSelectedColabToEditId(colabId);
@@ -295,6 +311,17 @@ export default function App() {
           setEditForm([{ start_time: '09:00', end_time: '13:00', location: locations[0]?.name || '' }]);
         } else {
           setEditForm(shifts.map(s => ({ start_time: s.start_time, end_time: s.end_time, location: s.location })));
+          
+          if (shifts.length === 1) {
+             const s = shifts[0];
+             if (s.start_time === '08:00' && s.end_time === '17:00') { setEditScheduleType('H1'); setEditDefaultLocation(s.location || ''); }
+             else if (s.start_time === '09:00' && s.end_time === '18:00') { setEditScheduleType('H2'); setEditDefaultLocation(s.location || ''); }
+             else if (s.start_time === '13:00' && s.end_time === '20:00') { setEditScheduleType('H3'); setEditDefaultLocation(s.location || ''); }
+             else if (s.start_time === '13:00' && s.end_time === '21:00') { setEditScheduleType('H4'); setEditDefaultLocation(s.location || ''); }
+             else if (s.location === 'Teletrabalho') { setEditScheduleType('TELETRABALHO'); }
+             else if (s.location === 'Férias') { setEditScheduleType('FERIAS'); }
+             else if (s.location === 'Falta') { setEditScheduleType('FALTA'); }
+          }
         }
       }
     } else {
@@ -335,27 +362,76 @@ export default function App() {
   };
 
   const handleSaveDayAdjustment = async () => {
-    if (!selectedColabToEditId) return;
+    if (!selectedColabToEditId || !selectedDayToEdit) return;
     try {
-      await supabase.from('escalas').delete()
-        .eq('colaborador_id', selectedColabToEditId)
-        .eq('data', selectedDayToEdit);
+      const startDate = new Date(selectedDayToEdit);
+      const endDate = editModeType === 'period' && editEndDate ? new Date(editEndDate) : startDate;
       
-      if (editForm.length > 0) {
-        const payload = editForm.map(shift => ({
-          colaborador_id: selectedColabToEditId,
-          data: selectedDayToEdit,
-          hora_entrada: shift.start_time || null,
-          hora_saida: shift.end_time || null,
-          localizacao: shift.location
-        }));
+      if (endDate < startDate) {
+         showNotification('A data de fim não pode ser anterior à data de início.', 'error');
+         return;
+      }
+      
+      const datesToProcess = [];
+      let d = new Date(startDate);
+      while (d <= endDate) {
+         const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+         const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+         const isHoliday = checkHoliday(dStr);
+         
+         if (editModeType === 'single' || (!isWeekend && !isHoliday)) {
+            datesToProcess.push(dStr);
+         }
+         d.setDate(d.getDate() + 1);
+      }
+      
+      if (datesToProcess.length === 0) {
+         showNotification('Não há dias úteis no período selecionado.', 'error');
+         return;
+      }
+
+      const { error: delErr } = await supabase.from('escalas')
+        .delete()
+        .eq('colaborador_id', selectedColabToEditId)
+        .in('data', datesToProcess);
+      if (delErr) throw delErr;
+      
+      let finalShifts = [];
+      if (editScheduleType === 'CUSTOM') {
+         finalShifts = editForm;
+      } else if (editScheduleType === 'TELETRABALHO') {
+         finalShifts = [{ start_time: null, end_time: null, location: 'Teletrabalho' }];
+      } else if (editScheduleType === 'FERIAS') {
+         finalShifts = [{ start_time: null, end_time: null, location: 'Férias' }];
+      } else if (editScheduleType === 'FALTA') {
+         finalShifts = [{ start_time: null, end_time: null, location: 'Falta' }];
+      } else if (PREDEFINED_SCHEDULES[editScheduleType]) {
+         finalShifts = [{
+            ...PREDEFINED_SCHEDULES[editScheduleType].shifts[0],
+            location: editDefaultLocation
+         }];
+      }
+
+      if (finalShifts.length > 0) {
+        const payload = [];
+        datesToProcess.forEach(dStr => {
+           finalShifts.forEach(shift => {
+              payload.push({
+                colaborador_id: selectedColabToEditId,
+                data: dStr,
+                hora_entrada: shift.start_time || null,
+                hora_saida: shift.end_time || null,
+                localizacao: shift.location
+              });
+           });
+        });
         const { error } = await supabase.from('escalas').insert(payload);
         if (error) throw error;
       }
 
       await fetchData();
       setIsEditModalOpen(false);
-      showNotification('Ajuste diário guardado com sucesso!');
+      showNotification(editModeType === 'period' ? `Período guardado com sucesso (${datesToProcess.length} dias).` : 'Ajuste diário guardado com sucesso!');
     } catch (err) {
       console.error(err);
       showNotification('Erro ao guardar: ' + err.message, 'error');
@@ -380,10 +456,23 @@ export default function App() {
   const handleOpenColabModal = (mode, colab = null) => {
     setColabModalMode(mode);
     if (mode === 'edit' && colab) {
+      let inferredType = 'CUSTOM';
+      let inferredLoc = '';
+      const shifts = Array.isArray(colab.default_shifts) ? colab.default_shifts : [];
+      if (shifts.length === 1) {
+         const s = shifts[0];
+         if (s.start_time === '08:00' && s.end_time === '17:00') { inferredType = 'H1'; inferredLoc = s.location || ''; }
+         else if (s.start_time === '09:00' && s.end_time === '18:00') { inferredType = 'H2'; inferredLoc = s.location || ''; }
+         else if (s.start_time === '13:00' && s.end_time === '20:00') { inferredType = 'H3'; inferredLoc = s.location || ''; }
+         else if (s.start_time === '13:00' && s.end_time === '21:00') { inferredType = 'H4'; inferredLoc = s.location || ''; }
+         else if (s.location === 'Teletrabalho') { inferredType = 'TELETRABALHO'; }
+      }
       setColabForm({
          ...colab,
          initial_password: '',
-         default_shifts: Array.isArray(colab.default_shifts) ? colab.default_shifts : []
+         schedule_type: inferredType,
+         default_location: inferredLoc,
+         default_shifts: shifts
       });
     } else {
       setColabForm({ 
@@ -392,10 +481,9 @@ export default function App() {
         role: 'Colaborador', 
         email: '', 
         initial_password: '',
-        default_shifts: [
-          { start_time: '09:00', end_time: '13:00', location: '' },
-          { start_time: '14:00', end_time: '20:00', location: '' }
-        ] 
+        schedule_type: 'H1',
+        default_location: '',
+        default_shifts: [] 
       });
     }
     setIsColabModalOpen(true);
@@ -430,8 +518,24 @@ export default function App() {
       }
 
       const payload = { ...colabForm };
+      
+      let finalShifts = [];
+      if (colabForm.schedule_type === 'CUSTOM') {
+         finalShifts = colabForm.default_shifts;
+      } else if (colabForm.schedule_type === 'TELETRABALHO') {
+         finalShifts = [{ start_time: null, end_time: null, location: 'Teletrabalho' }];
+      } else if (PREDEFINED_SCHEDULES[colabForm.schedule_type]) {
+         finalShifts = [{
+            ...PREDEFINED_SCHEDULES[colabForm.schedule_type].shifts[0],
+            location: colabForm.default_location
+         }];
+      }
+      payload.default_shifts = finalShifts;
+      
       delete payload.id; 
-      delete payload.initial_password; // não queremos enviar isto para a tabela de colaboradores
+      delete payload.initial_password;
+      delete payload.schedule_type;
+      delete payload.default_location;
       
       if (colabModalMode === 'edit') {
         const { error } = await supabase.from('colaboradores').update(payload).eq('id', colabForm.id);
@@ -553,23 +657,40 @@ export default function App() {
              {colabsForDay.map(colab => {
                const shifts = getEffectiveScheduleForDay(colab, dateStr);
                const hasOverride = shifts.some(s => s.isOverride);
+               const specialStatus = shifts.length === 1 && ['Teletrabalho', 'Férias', 'Falta'].includes(shifts[0].location) ? shifts[0].location : null;
+                
+               let avatarStyle = getColorForName(colab.name);
+               if (specialStatus === 'Férias') avatarStyle = 'bg-yellow-400 text-yellow-900 border-yellow-500';
+               else if (specialStatus === 'Falta') avatarStyle = 'bg-red-500 text-white border-red-600';
+               else if (specialStatus === 'Teletrabalho') avatarStyle = 'bg-indigo-400 text-indigo-900 border-indigo-500';
+
                return (
                  <div key={colab.id} className="relative group/tooltip" onClick={(e) => { e.stopPropagation(); isAdmin && handleOpenEditDay(dateStr, colab.id); }}>
-                   <div className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border shadow-sm transition-all ${getColorForName(colab.name)} ${hasOverride ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-white' : ''} ${isAdmin ? 'hover:scale-110 cursor-pointer' : ''}`}>
+                   <div className={`w-7 h-7 rounded-full text-[10px] font-bold flex items-center justify-center border shadow-sm transition-all ${avatarStyle} ${hasOverride && !specialStatus ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-white' : ''} ${isAdmin ? 'hover:scale-110 cursor-pointer' : ''}`}>
                      {getInitials(colab.name)}
                    </div>
                    {/* Tooltip */}
                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-3 py-2 bg-slate-900 text-white text-[11px] rounded-lg opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all z-50 shadow-xl border border-slate-700 pointer-events-none">
                      <p className="font-bold text-indigo-300 mb-2 text-center border-b border-slate-700 pb-1">{colab.name}</p>
                      <div className="space-y-1.5">
-                       {shifts.map((s, idx) => (
-                         <div key={idx} className="flex flex-col items-center justify-center bg-slate-800/50 p-1.5 rounded">
-                           <span className="flex items-center gap-1 font-mono text-slate-200"><Clock className="w-3 h-3 text-indigo-400"/> {s.start_time} - {s.end_time}</span>
-                           <span className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5"><MapPin className="w-3 h-3 text-rose-400"/> {s.location || 'Sem localização'}</span>
+                       {specialStatus ? (
+                         <div className="flex flex-col items-center justify-center bg-slate-800/50 p-2 rounded border border-slate-700">
+                           <span className="font-black text-[11px] uppercase tracking-wider text-white">
+                             {specialStatus === 'Férias' && '🏖️ FÉRIAS'}
+                             {specialStatus === 'Falta' && '❌ FALTA'}
+                             {specialStatus === 'Teletrabalho' && '🏠 TELETRABALHO'}
+                           </span>
                          </div>
-                       ))}
+                       ) : (
+                         shifts.map((s, idx) => (
+                           <div key={idx} className="flex flex-col items-center justify-center bg-slate-800/50 p-1.5 rounded">
+                             <span className="flex items-center gap-1 font-mono text-slate-200"><Clock className="w-3 h-3 text-indigo-400"/> {s.start_time} - {s.end_time}</span>
+                             <span className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5"><MapPin className="w-3 h-3 text-rose-400"/> {s.location || 'Sem localização'}</span>
+                           </div>
+                         ))
+                       )}
                      </div>
-                     {hasOverride && <p className="text-[9px] text-yellow-500 mt-2 text-center uppercase font-bold">⚠️ Tem Ajuste Manual</p>}
+                     {hasOverride && !specialStatus && <p className="text-[9px] text-yellow-500 mt-2 text-center uppercase font-bold">⚠️ Tem Ajuste Manual</p>}
                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-700"></div>
                    </div>
                  </div>
@@ -875,37 +996,85 @@ export default function App() {
               </div>
 
               {selectedColabToEditId && (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-end border-b border-slate-700 pb-2">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase">Blocos de Trabalho neste dia</label>
-                    <button type="button" onClick={handleAddShiftToEditForm} className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Plus className="w-3 h-3"/> Novo Turno</button>
-                  </div>
-
-                  {editForm.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center py-4 bg-slate-900/30 rounded-xl border border-slate-700/50">Não tem turnos registados neste dia. Está de folga.</p>
-                  ) : (
-                    editForm.map((shift, index) => (
-                      <div key={index} className="bg-slate-900/40 border border-slate-700 rounded-xl p-4 relative group">
-                        <button type="button" onClick={() => handleRemoveShiftFromEditForm(index)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" title="Remover Turno"><X className="w-3 h-3" /></button>
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                          <div>
-                            <label className="block text-[9px] text-slate-500 mb-1">Entrada</label>
-                            <input type="time" value={shift.start_time} onChange={(e) => handleEditFormChange(index, 'start_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] text-slate-500 mb-1">Saída</label>
-                            <input type="time" value={shift.end_time} onChange={(e) => handleEditFormChange(index, 'end_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
-                          </div>
+                <div className="space-y-4">
+                  <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
+                    <div className="flex items-center gap-4 mb-3">
+                      <label className="flex items-center gap-2 text-xs text-white cursor-pointer">
+                        <input type="radio" name="editMode" checked={editModeType === 'single'} onChange={() => setEditModeType('single')} className="accent-indigo-500" />
+                        Dia único
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-white cursor-pointer">
+                        <input type="radio" name="editMode" checked={editModeType === 'period'} onChange={() => setEditModeType('period')} className="accent-indigo-500" />
+                        Período de Dias
+                      </label>
+                    </div>
+                    {editModeType === 'period' && (
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="block text-[9px] text-slate-500 mb-1">Início</label>
+                          <input type="date" value={selectedDayToEdit} disabled className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-slate-400 cursor-not-allowed" />
                         </div>
-                        <div>
-                          <label className="block text-[9px] text-slate-500 mb-1">Localização</label>
-                          <select value={shift.location} onChange={(e) => handleEditFormChange(index, 'location', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500 [&>option]:bg-slate-800">
-                            <option value="">Sem localização</option>
-                            {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
-                          </select>
+                        <div className="flex-1">
+                          <label className="block text-[9px] text-slate-500 mb-1">Fim</label>
+                          <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" min={selectedDayToEdit} />
                         </div>
                       </div>
-                    ))
+                    )}
+                  </div>
+
+                  <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
+                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Ação / Tipo de Horário</label>
+                     <select value={editScheduleType} onChange={(e) => setEditScheduleType(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500 [&>option]:bg-slate-800 mb-3">
+                        {Object.entries(PREDEFINED_SCHEDULES).map(([key, def]) => (
+                           <option key={key} value={key}>{def.label}</option>
+                        ))}
+                     </select>
+                     
+                     {editScheduleType !== 'CUSTOM' && editScheduleType !== 'TELETRABALHO' && editScheduleType !== 'FERIAS' && editScheduleType !== 'FALTA' && (
+                       <div>
+                         <label className="block text-[9px] text-slate-500 mb-1">Localização</label>
+                         <select value={editDefaultLocation} onChange={(e) => setEditDefaultLocation(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500 [&>option]:bg-slate-800">
+                           <option value="">Sem localização</option>
+                           {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+                         </select>
+                       </div>
+                     )}
+                  </div>
+
+                  {editScheduleType === 'CUSTOM' && (
+                     <div className="space-y-3">
+                       <div className="flex justify-between items-end border-b border-slate-700 pb-2">
+                         <label className="block text-[10px] font-bold text-slate-400 uppercase">Blocos Manuais</label>
+                         <button type="button" onClick={handleAddShiftToEditForm} className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Plus className="w-3 h-3"/> Novo Turno</button>
+                       </div>
+
+                       {editForm.length === 0 ? (
+                         <p className="text-xs text-slate-500 text-center py-4 bg-slate-900/30 rounded-xl border border-slate-700/50">Não tem turnos registados. Limpará o dia/período.</p>
+                       ) : (
+                         editForm.map((shift, index) => (
+                           <div key={index} className="bg-slate-900/40 border border-slate-700 rounded-xl p-4 relative group">
+                             <button type="button" onClick={() => handleRemoveShiftFromEditForm(index)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" title="Remover Turno"><X className="w-3 h-3" /></button>
+                             <div className="grid grid-cols-2 gap-3 mb-3">
+                               <div>
+                                 <label className="block text-[9px] text-slate-500 mb-1">Entrada</label>
+                                 <input type="time" value={shift.start_time} onChange={(e) => handleEditFormChange(index, 'start_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                               </div>
+                               <div>
+                                 <label className="block text-[9px] text-slate-500 mb-1">Saída</label>
+                                 <input type="time" value={shift.end_time} onChange={(e) => handleEditFormChange(index, 'end_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                               </div>
+                             </div>
+                             <div>
+                               <label className="block text-[9px] text-slate-500 mb-1">Localização</label>
+                               <select value={shift.location} onChange={(e) => handleEditFormChange(index, 'location', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500 [&>option]:bg-slate-800">
+                                 <option value="">Sem localização</option>
+                                 {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+                               </select>
+                             </div>
+                           </div>
+                         ))
+                       )}
+                     </div>
                   )}
                 </div>
               )}
@@ -952,37 +1121,60 @@ export default function App() {
                </div>
 
                <div className="pt-3 border-t border-slate-700">
-                 <div className="flex justify-between items-end mb-3">
-                   <label className="block text-[10px] font-bold text-slate-400 uppercase">Blocos de Trabalho Padrão</label>
-                   <button type="button" onClick={handleAddDefaultShift} className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Plus className="w-3 h-3"/> Novo Bloco</button>
+                 <div className="mb-4">
+                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Horário Padrão</label>
+                   <select value={colabForm.schedule_type} onChange={(e) => setColabForm({ ...colabForm, schedule_type: e.target.value })} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl p-3 text-xs text-white outline-none focus:border-indigo-500 transition-colors [&>option]:bg-slate-800">
+                     {Object.entries(PREDEFINED_SCHEDULES).filter(([key]) => key !== 'FERIAS' && key !== 'FALTA').map(([key, def]) => (
+                       <option key={key} value={key}>{def.label}</option>
+                     ))}
+                   </select>
                  </div>
 
-                 {colabForm.default_shifts.length === 0 && <p className="text-xs text-slate-500 text-center bg-slate-900/30 p-4 rounded-xl border border-slate-700/50">Nenhum turno padrão. Trabalha apenas mediante escala manual.</p>}
+                 {colabForm.schedule_type !== 'CUSTOM' && colabForm.schedule_type !== 'TELETRABALHO' && (
+                   <div className="mb-4">
+                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Localização Padrão</label>
+                     <select value={colabForm.default_location} onChange={(e) => setColabForm({ ...colabForm, default_location: e.target.value })} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl p-3 text-xs text-white outline-none focus:border-indigo-500 transition-colors [&>option]:bg-slate-800">
+                       <option value="">Sem localização</option>
+                       {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+                     </select>
+                   </div>
+                 )}
 
-                 <div className="space-y-3">
-                   {colabForm.default_shifts.map((shift, index) => (
-                      <div key={index} className="bg-slate-900/40 border border-slate-700 rounded-xl p-3 relative group">
-                        <button type="button" onClick={() => handleRemoveDefaultShift(index)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" title="Remover"><X className="w-3 h-3" /></button>
-                        <div className="grid grid-cols-2 gap-2 mb-2">
-                          <div>
-                            <label className="block text-[9px] text-slate-500 mb-1">Entrada</label>
-                            <input type="time" value={shift.start_time} onChange={(e) => handleColabFormShiftChange(index, 'start_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                 {colabForm.schedule_type === 'CUSTOM' && (
+                   <>
+                     <div className="flex justify-between items-end mb-3">
+                       <label className="block text-[10px] font-bold text-slate-400 uppercase">Blocos Manuais</label>
+                       <button type="button" onClick={handleAddDefaultShift} className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Plus className="w-3 h-3"/> Novo Bloco</button>
+                     </div>
+
+                     {colabForm.default_shifts.length === 0 && <p className="text-xs text-slate-500 text-center bg-slate-900/30 p-4 rounded-xl border border-slate-700/50">Nenhum turno padrão. Trabalha apenas mediante escala manual.</p>}
+
+                     <div className="space-y-3">
+                       {colabForm.default_shifts.map((shift, index) => (
+                          <div key={index} className="bg-slate-900/40 border border-slate-700 rounded-xl p-3 relative group">
+                            <button type="button" onClick={() => handleRemoveDefaultShift(index)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" title="Remover"><X className="w-3 h-3" /></button>
+                            <div className="grid grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="block text-[9px] text-slate-500 mb-1">Entrada</label>
+                                <input type="time" value={shift.start_time} onChange={(e) => handleColabFormShiftChange(index, 'start_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                              </div>
+                              <div>
+                                <label className="block text-[9px] text-slate-500 mb-1">Saída</label>
+                                <input type="time" value={shift.end_time} onChange={(e) => handleColabFormShiftChange(index, 'end_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[9px] text-slate-500 mb-1">Localização Base</label>
+                              <select value={shift.location} onChange={(e) => handleColabFormShiftChange(index, 'location', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500 [&>option]:bg-slate-800">
+                                <option value="">Sem localização</option>
+                                {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+                              </select>
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-[9px] text-slate-500 mb-1">Saída</label>
-                            <input type="time" value={shift.end_time} onChange={(e) => handleColabFormShiftChange(index, 'end_time', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-[9px] text-slate-500 mb-1">Localização Base</label>
-                          <select value={shift.location} onChange={(e) => handleColabFormShiftChange(index, 'location', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-indigo-500 [&>option]:bg-slate-800">
-                            <option value="">Sem localização</option>
-                            {locations.map(loc => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                   ))}
-                 </div>
+                       ))}
+                     </div>
+                   </>
+                 )}
                </div>
             </div>
 
